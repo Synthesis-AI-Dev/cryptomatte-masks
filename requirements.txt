@@ -1,0 +1,4 @@
+numpy==1.19.0
+pillow==7.1.2
+git+https://github.com/jamesbowman/openexrpython.git#egg=openexr-1.3.2
+git+git://github.com:Synthesis-AI-Dev/exr-info.git#egg=exr_info
