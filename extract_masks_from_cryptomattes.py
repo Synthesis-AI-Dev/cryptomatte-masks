@@ -4,18 +4,20 @@ import enum
 import json
 import random
 import struct
-from dataclasses import dataclass
+from collections import OrderedDict
 from pathlib import Path
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple
 
 import Imath
 import OpenEXR
 import imageio
 import numpy as np
+from omegaconf import OmegaConf
 
 from exr_info import exr_info
 
-MASK_THRESHOLD = 0.55 * 255
+CONFIG_FILE = 'config.yaml'
+MASK_THRESHOLD = 0.50 * 255
 
 
 class ExrDtype(enum.Enum):
@@ -149,15 +151,24 @@ def extract_mask(exr_file):
     header = exr_file.header()
     for key in header:
         if '/manifest' in key:
-            manifest = json.loads(header[key])
+            manifest_dict = json.loads(header[key])
             break
 
+    # Convert manifest to orderedDict to preserve order of keys
+    list_keys = sorted([key for key in manifest_dict])
+    manifest = OrderedDict()
+    for key in list_keys:
+        manifest[key] = manifest_dict[key]
+
     # Convert hash ids to float ids
-    float_ids = {}
-    for name, value in manifest.items():
-        bytes_val = bytes.fromhex(value)
+    float_ids = []
+    obj_ids = []
+    for ii, key in enumerate(list_keys):
+        hex_id = manifest[key]
+        bytes_val = bytes.fromhex(hex_id)
         float_val = struct.unpack('>f', bytes_val)[0]
-        float_ids[name] = float_val
+        float_ids.append(float_val)
+        obj_ids.append(ii)
 
     # Extract the crypto layers from EXR file
     cr_00, cr_01, cr_02 = get_crypto_layers_from_exr(exr_file)
@@ -165,8 +176,8 @@ def extract_mask(exr_file):
     # Extract mask of each object in manifest
     mask_list = []
     id_list = []
-    id_mapping = {}  # Mapping the name of each obj to obj id
-    for obj_id, (obj_name, float_id) in enumerate(float_ids.items()):
+    id_mapping = OrderedDict()  # Mapping the name of each obj to obj id
+    for float_id, obj_id, obj_name in zip(float_ids, obj_ids, list_keys):
         mask = get_mask_for_id(float_id, cr_00, cr_01, cr_02)
         mask_list.append(mask)
         id_list.append(obj_id)
@@ -186,28 +197,78 @@ def extract_mask(exr_file):
     return mask_combined, mask_combined_rgb, id_mapping
 
 
-def main(args):
-    path_exr = args.file
+def process_file(path_exr: Path, output_dir: Optional[Path], mask_ext: str, mask_rgb_ext: str, mask_mapping_json: str):
+    """Extract mask from an EXR and save to disk
+    The mapping from object names to ids in mask is saved as a json. We perform checks to make sure the manifest
+    is the same for all images in the dir.
+
+    Args:
+        path_exr (pathlib.Path): The input EXR file
+        output_dir (None or pathlib.Path): The dir to create output files in
+        mask_ext (str): The extention to give to filenames of output masks
+        mask_rgb_ext (str): The extention to give to filenames of RGB visualization of output masks
+        mask_mapping_json (str): The name of the output file containing mappings from object names to IDs in mask.
+    """
     if not path_exr.exists():
         raise ValueError(f'The file does not exist: {path_exr}')
+    print(f'Extracting masks from: {path_exr}')
+
+    mask_mapping_file = output_dir / mask_mapping_json
+    if mask_mapping_file.exists():
+        with mask_mapping_file.open() as fd:
+            id_mapping_saved_ = json.load(fd)
+        # Convert to orderedDict
+        list_keys = sorted([key for key in id_mapping_saved_])
+        id_mapping_saved = OrderedDict()
+        for key in list_keys:
+            id_mapping_saved[key] = id_mapping_saved_[key]
 
     exr_file = OpenEXR.InputFile(str(path_exr))
     mask_combined, mask_combined_rgb, id_mapping = extract_mask(exr_file)
 
-    out_dir = path_exr.parent
-    out_file = out_dir / f"{path_exr.stem}.mask.png"
+    if not output_dir:
+        output_dir = path_exr.parent
+
+    out_file = output_dir / f"{path_exr.stem}{mask_ext}"
     imageio.imwrite(out_file, mask_combined)
 
-    out_file = out_dir / f"{path_exr.stem}.mask_rgb.png"
+    out_file = output_dir / f"{path_exr.stem}{mask_rgb_ext}"
     imageio.imwrite(out_file, mask_combined_rgb)
 
-    out_file = out_dir / f"{path_exr.stem}.mask_id_mapping.json"
-    with out_file.open('w') as json_file:
-        json.dump(id_mapping, json_file)
+    if not mask_mapping_file.exists():
+        with mask_mapping_file.open('w') as json_file:
+            json.dump(id_mapping, json_file)
+    else:
+        if id_mapping != id_mapping_saved:
+            print(f'manifest_saved: {id_mapping_saved}, conflicting_manifest: {id_mapping}')
+            raise ValueError(f'The manifest in EXR file {path_exr} changed from manifest in previous images in same dir!')
+
+
+def main():
+    base_conf = OmegaConf.load(CONFIG_FILE)
+    cli_conf = OmegaConf.from_cli()
+    conf = OmegaConf.merge(base_conf, cli_conf)
+
+    dir_input = Path(conf.dir_input)
+    dir_output = Path(conf.dir_output)
+    input_exr_ext = conf.input_exr_ext
+    mask_mapping_json = conf.mask_mapping_json
+    random_seed = conf.random_seed
+    random.seed(random_seed)
+
+    output_mask_ext = conf.output_mask_ext
+    output_mask_rgb_ext = conf.output_mask_rgb_ext
+
+    if not dir_input.is_dir():
+        raise ValueError(f'Not a directory: {dir_input}')
+    if not dir_output.exists():
+        dir_output.mkdir(parents=True)
+
+    exr_filenames = sorted(dir_input.glob('*' + input_exr_ext))
+
+    for f_exr in exr_filenames:
+        process_file(f_exr, dir_output, output_mask_ext, output_mask_rgb_ext, mask_mapping_json)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Inspect EXR header')
-    parser.add_argument("-f", "--file", help="EXR file name", default='', type=Path)
-    args = parser.parse_args()
-    main(args)
+    main()
