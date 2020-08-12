@@ -1,4 +1,5 @@
-numpy==1.19.0
-pillow==7.1.2
+numpy>=1.19.0
 git+https://github.com/jamesbowman/openexrpython.git#egg=openexr-1.3.2
 git+git://github.com:Synthesis-AI-Dev/exr-info.git#egg=exr_info
+omegaconf>=2.0.0
+imageio>=2.9.0

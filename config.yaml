@@ -2,7 +2,7 @@ dir_input: images/
 dir_output: images/
 input_exr_ext: .exr
 output_mask_ext: .segments.png
-output_mask_rgb_ext: .segments.rgb.png  # RGB visualization of output masks
+output_mask_rgb_ext: .segments_rgb.png  # RGB visualization of output masks
 # The output file with mapping from object names to IDs in mask. Will be saved in dir_output.
 mask_mapping_json: mask_id_mapping.json
-random_seed: 1  # The colors for RGB visualization are generated randomly. This fixes order of random colors.
+random_seed: 0  # The colors for RGB visualization are generated randomly. This fixes order of random colors.
