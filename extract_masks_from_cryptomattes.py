@@ -217,17 +217,12 @@ def process_file(path_exr: Path, output_dir: Optional[Path], mask_ext: str, mask
     mask_mapping_file = output_dir / mask_mapping_json
     if mask_mapping_file.exists():
         with mask_mapping_file.open() as fd:
-            id_mapping_saved_ = json.load(fd)
-        # Convert to orderedDict
-        list_keys = sorted([key for key in id_mapping_saved_])
-        id_mapping_saved = OrderedDict()
-        for key in list_keys:
-            id_mapping_saved[key] = id_mapping_saved_[key]
+            id_mapping_saved = json.load(fd, object_pairs_hook=OrderedDict)
 
     exr_file = OpenEXR.InputFile(str(path_exr))
     mask_combined, mask_combined_rgb, id_mapping = extract_mask(exr_file)
 
-    if not output_dir:
+    if output_dir is None:
         output_dir = path_exr.parent
 
     out_file = output_dir / f"{path_exr.stem}{mask_ext}"
@@ -262,8 +257,7 @@ def main():
 
     if not dir_input.is_dir():
         raise ValueError(f'Not a directory: {dir_input}')
-    if not dir_output.exists():
-        dir_output.mkdir(parents=True)
+dir_output.mkdir(parents=True, exists_ok=True)
 
     exr_filenames = sorted(dir_input.glob('*' + input_exr_ext))
 
