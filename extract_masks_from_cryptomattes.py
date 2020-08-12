@@ -1,7 +1,7 @@
 """Use the cryptomattes from Vray/Blender and extract masks from them"""
-import argparse
 import enum
 import json
+import math
 import random
 import struct
 from collections import OrderedDict
@@ -98,7 +98,7 @@ def get_crypto_layer(exr_file: OpenEXR.InputFile, layer_mapping: exr_info.Crypto
     return cr_00
 
 
-def get_crypto_layers_from_exr(exr_file: OpenEXR.InputFile):
+def get_crypto_layers_from_exr(exr_file: OpenEXR.InputFile, level: int = 6):
     """Extracts all the cryptomatte layers from an EXR file
 
     Note:
@@ -109,39 +109,54 @@ def get_crypto_layers_from_exr(exr_file: OpenEXR.InputFile):
 
     Args:
         exr_file (OpenEXR.InputFile): Opened EXR file object
+        level (int): Default is 6. The Level of the cryptomatte limits the max. num of unique masks in the cryptomatte.
+                     The number of cruptomatte layers depends on the level.
 
     Returns:
-        numpy.ndarray: First cryptomatte layer. Shape: (H, W, 4)
-        numpy.ndarray: Second cryptomatte layer. Shape: (H, W, 4)
-        numpy.ndarray: Third cryptomatte layer. Shape: (H, W, 4)
+        numpy.ndarray: Combined cryptomatte layer. Shape: (H, W, 4 * ceil(level/2))
     """
     # TODO: Change the number of cryptomatte layers depending on the level of the cryptomatte.
     exr_channels = exr_info.ExrChannels(exr_info.Renderer.VRAY)
-    cr_00 = get_crypto_layer(exr_file, exr_channels.cryptomatte_00)
-    cr_01 = get_crypto_layer(exr_file, exr_channels.cryptomatte_01)
-    cr_02 = get_crypto_layer(exr_file, exr_channels.cryptomatte_02)
 
-    return cr_00, cr_01, cr_02
+    num_layers = math.ceil(level / 2)
+    cr_list = []
+    for layer_num in range(num_layers):
+        cr = get_crypto_layer(exr_file, exr_channels.cryptomatte[f'{layer_num:02d}'])
+        cr_list.append(cr)
+
+    cr_combined = np.concatenate(cr_list, axis=2)
+
+    return cr_combined
 
 
-def get_mask_for_id(float_id, cr_00, cr_01, cr_02):
-    id_rank0 = (cr_00[:, :, 0] == float_id)
-    coverage0 = cr_00[:, :, 1] * id_rank0
-    id_rank1 = (cr_00[:, :, 2] == float_id)
-    coverage1 = cr_00[:, :, 3] * id_rank1
+def get_coverage_for_rank(float_id: float, cr_combined: np.ndarray, rank: int):
+    """Get the coverage mask for a given rank from cryptomatte layers
+    Args:
+        float_id (float32): The ID of the object
+        cr_combined (numpy.ndarray): The cryptomatte layers combined into a single array along the channels axis.
+                                     By default, there are 3 layers, corresponding to a level of 6.
+        rank (int): The rank, or level, of the coverage to be calculated
+    """
+    id_rank = (cr_combined[:, :, rank * 2] == float_id)
+    coverage_rank = cr_combined[:, :, rank * 2 + 1] * id_rank
 
-    id_rank2 = (cr_01[:, :, 0] == float_id)
-    coverage2 = cr_01[:, :, 1] * id_rank2
-    id_rank3 = (cr_01[:, :, 2] == float_id)
-    coverage3 = cr_01[:, :, 3] * id_rank3
+    return coverage_rank
 
-    id_rank4 = (cr_02[:, :, 0] == float_id)
-    coverage4 = cr_02[:, :, 1] * id_rank4
-    id_rank5 = (cr_02[:, :, 2] == float_id)
-    coverage5 = cr_02[:, :, 3] * id_rank5
 
-    coverage = coverage0 + coverage1 + coverage2 + coverage3 + coverage4 + coverage5
+def get_mask_for_id(float_id: float, cr_combined: np.ndarray, level: int = 6):
+    """Extract mask corresponding to a float id from the cryptomatte layers
+    Args:
+        float_id (float32): The ID of the object
+        cr_combined (numpy.ndarray): The cryptomatte layers combined into a single array along the channels axis.
+                                     By default, there are 3 layers, corresponding to a level of 6.
+    """
+    coverage_list = []
+    for rank in range(level):
+        coverage_rank = get_coverage_for_rank(float_id, cr_combined, rank)
+        coverage_list.append(coverage_rank)
+    coverage = sum(coverage_list)
     coverage = np.clip(coverage, 0.0, 1.0)
+
     mask = (coverage * 255).astype(np.uint8)
 
     return mask
@@ -166,14 +181,14 @@ def extract_mask(exr_file):
         obj_ids.append(ii)
 
     # Extract the crypto layers from EXR file
-    cr_00, cr_01, cr_02 = get_crypto_layers_from_exr(exr_file)
+    cr_combined = get_crypto_layers_from_exr(exr_file)
 
     # Extract mask of each object in manifest
     mask_list = []
     id_list = []
     id_mapping = OrderedDict()  # Mapping the name of each obj to obj id
     for float_id, obj_id, obj_name in zip(float_ids, obj_ids, sorted(manifest)):
-        mask = get_mask_for_id(float_id, cr_00, cr_01, cr_02)
+        mask = get_mask_for_id(float_id, cr_combined)
         mask_list.append(mask)
         id_list.append(obj_id)
         id_mapping[obj_name] = obj_id
