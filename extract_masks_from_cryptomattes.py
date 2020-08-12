@@ -17,7 +17,7 @@ from omegaconf import OmegaConf
 from exr_info import exr_info
 
 CONFIG_FILE = 'config.yaml'
-MASK_THRESHOLD = 0.50 * 255
+MASK_THRESHOLD = 0.48 * 255
 
 
 class ExrDtype(enum.Enum):
@@ -152,20 +152,14 @@ def extract_mask(exr_file):
     header = exr_file.header()
     for key in header:
         if '/manifest' in key:
-            manifest_dict = json.loads(header[key])
+            manifest = json.loads(header[key], object_pairs_hook=OrderedDict)
             break
-
-    # Convert manifest to orderedDict to preserve order of keys
-    list_keys = sorted([key for key in manifest_dict])
-    manifest = OrderedDict()
-    for key in list_keys:
-        manifest[key] = manifest_dict[key]
 
     # Convert hash ids to float ids
     float_ids = []
     obj_ids = []
-    for ii, key in enumerate(list_keys):
-        hex_id = manifest[key]
+    for ii, obj_name in enumerate(sorted(manifest)):
+        hex_id = manifest[obj_name]
         bytes_val = bytes.fromhex(hex_id)
         float_val = struct.unpack('>f', bytes_val)[0]
         float_ids.append(float_val)
@@ -178,7 +172,7 @@ def extract_mask(exr_file):
     mask_list = []
     id_list = []
     id_mapping = OrderedDict()  # Mapping the name of each obj to obj id
-    for float_id, obj_id, obj_name in zip(float_ids, obj_ids, list_keys):
+    for float_id, obj_id, obj_name in zip(float_ids, obj_ids, sorted(manifest)):
         mask = get_mask_for_id(float_id, cr_00, cr_01, cr_02)
         mask_list.append(mask)
         id_list.append(obj_id)
@@ -257,7 +251,7 @@ def main():
 
     if not dir_input.is_dir():
         raise ValueError(f'Not a directory: {dir_input}')
-dir_output.mkdir(parents=True, exists_ok=True)
+    dir_output.mkdir(parents=True, exist_ok=True)
 
     exr_filenames = sorted(dir_input.glob('*' + input_exr_ext))
 
