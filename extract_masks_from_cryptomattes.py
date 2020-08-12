@@ -118,8 +118,8 @@ def get_crypto_layers_from_exr(exr_file: OpenEXR.InputFile):
     # TODO: Change the number of cryptomatte layers depending on the level of the cryptomatte.
     exr_channels = exr_info.ExrChannels(exr_info.Renderer.VRAY)
     cr_00 = get_crypto_layer(exr_file, exr_channels.cryptomatte_00)
-    cr_01 = get_crypto_layer(exr_file, exr_channels.cryptomatte_00)
-    cr_02 = get_crypto_layer(exr_file, exr_channels.cryptomatte_00)
+    cr_01 = get_crypto_layer(exr_file, exr_channels.cryptomatte_01)
+    cr_02 = get_crypto_layer(exr_file, exr_channels.cryptomatte_02)
 
     return cr_00, cr_01, cr_02
 
@@ -141,6 +141,7 @@ def get_mask_for_id(float_id, cr_00, cr_01, cr_02):
     coverage5 = cr_02[:, :, 3] * id_rank5
 
     coverage = coverage0 + coverage1 + coverage2 + coverage3 + coverage4 + coverage5
+    coverage = np.clip(coverage, 0.0, 1.0)
     mask = (coverage * 255).astype(np.uint8)
 
     return mask
