@@ -15,13 +15,14 @@ overwritten from the command line.
 ```bash
 python extract_masks_from_cryptomattes.py dir_input=images/ dir_output=images/
 ```
-It will generate a PNG of mask for each EXR file in input dir, a .json file containing mapping from
-object names to IDs in mask and an RGB visualization of the mask.
-Example of output json:
 
-```json
-{"cords": 0, "floor": 1, "vrayLightDome": 2, "walls": 3}
-```
+For each EXR file in the input dir, it will generate:
+ - A mask of all objects in the scene, in 16-bit, single-channel PNG format 
+ - An RGB visualization of the mask.
+ - A JSON file containing mapping from object names to IDs in mask. Example of output json:
+    ```json
+    {"cords": 0, "floor": 1, "vrayLightDome": 2, "walls": 3}
+    ```
 
 ## Installation
 
