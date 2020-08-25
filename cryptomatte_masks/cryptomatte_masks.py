@@ -4,7 +4,7 @@ import math
 import random
 import struct
 from collections import OrderedDict
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
 
 import Imath
 import OpenEXR
@@ -20,7 +20,7 @@ class ExrDtype(enum.Enum):
     FLOAT16 = 1
 
 
-def get_imsize(exr_file: OpenEXR.InputFile):
+def get_imsize(exr_file: OpenEXR.InputFile) -> Tuple[int, int]:
     """Get the height and width of image within and EXR file
 
     Args:
@@ -38,7 +38,7 @@ def get_imsize(exr_file: OpenEXR.InputFile):
 
 
 def exr_channel_to_numpy(exr_file: OpenEXR.InputFile, channel_name: str, reshape: Optional[Tuple[int, int]],
-                         dtype: ExrDtype = ExrDtype.FLOAT32):
+                         dtype: ExrDtype = ExrDtype.FLOAT32) -> np.ndarray:
     """Extracts a channel in an EXR file into a numpy array
 
     Args:
@@ -64,7 +64,7 @@ def exr_channel_to_numpy(exr_file: OpenEXR.InputFile, channel_name: str, reshape
     return channel_arr
 
 
-def get_crypto_layer(exr_file: OpenEXR.InputFile, layer_mapping: exr_info.CryptoLayerMapping):
+def get_crypto_layer(exr_file: OpenEXR.InputFile, layer_mapping: exr_info.CryptoLayerMapping) -> np.ndarray:
     """Extract one of the cryptomatte layers as a 4-channel numpy array.
     Each cryptomatte layer has 4 channels for RGBA.
 
@@ -93,7 +93,7 @@ def get_crypto_layer(exr_file: OpenEXR.InputFile, layer_mapping: exr_info.Crypto
     return cr_00
 
 
-def get_crypto_layers_from_exr(exr_file: OpenEXR.InputFile, level: int = 6):
+def get_crypto_layers_from_exr(exr_file: OpenEXR.InputFile, level: int = 6) -> np.ndarray:
     """Extracts all the cryptomatte layers from an EXR file
 
     Note:
@@ -123,13 +123,16 @@ def get_crypto_layers_from_exr(exr_file: OpenEXR.InputFile, level: int = 6):
     return cr_combined
 
 
-def get_coverage_for_rank(float_id: float, cr_combined: np.ndarray, rank: int):
+def get_coverage_for_rank(float_id: float, cr_combined: np.ndarray, rank: int) -> np.ndarray:
     """Get the coverage mask for a given rank from cryptomatte layers
     Args:
         float_id (float32): The ID of the object
         cr_combined (numpy.ndarray): The cryptomatte layers combined into a single array along the channels axis.
                                      By default, there are 3 layers, corresponding to a level of 6.
         rank (int): The rank, or level, of the coverage to be calculated
+
+    Returns:
+        numpy.ndarray: Mask for given coverage rank. Dtype: np.float32, Range: [0, 1]
     """
     id_rank = (cr_combined[:, :, rank * 2] == float_id)
     coverage_rank = cr_combined[:, :, rank * 2 + 1] * id_rank
@@ -137,7 +140,7 @@ def get_coverage_for_rank(float_id: float, cr_combined: np.ndarray, rank: int):
     return coverage_rank
 
 
-def get_mask_for_id(float_id: float, cr_combined: np.ndarray, level: int = 6):
+def get_mask_for_id(float_id: float, cr_combined: np.ndarray, level: int = 6) -> np.ndarray:
     """Extract mask corresponding to a float id from the cryptomatte layers
     Args:
         float_id (float32): The ID of the object
@@ -146,6 +149,9 @@ def get_mask_for_id(float_id: float, cr_combined: np.ndarray, level: int = 6):
         level (int): The Level of the Cryptomatte. Default is 6 for most rendering engines. The level dictates the
                      max num of objects that the crytomatte can represent. The number of cryptomatte layers in EXR
                      will change depending on level.
+
+    Returns:
+        numpy.ndarray: Mask from cryptomatte for a given id. Dtype: np.uint8, Range: [0, 255]
     """
     coverage_list = []
     for rank in range(level):
@@ -159,7 +165,16 @@ def get_mask_for_id(float_id: float, cr_combined: np.ndarray, level: int = 6):
     return mask
 
 
-def extract_mask(exr_file):
+def extract_mask(exr_file: OpenEXR.InputFile) -> Tuple[np.ndarray, np.ndarray, Dict]:
+    """Get a mask of all the objects in an EXR image from the cryptomatte
+    Args:
+        exr_file (OpenEXR.InputFile): The opened EXR file object
+
+    Returns:
+        numpy.ndarray: Mask of all objects in scene. Each object has a unique value. Dtype: np.float16, Shape: (H, W)
+        numpy.ndarray: RGB visualization of the mask. Dtype: np.uint8, Shape: (H, W, 3)
+        dict[]
+    """
     # Get the manifest (mapping of object names to hash ids)
     header = exr_file.header()
     manifest = None
@@ -207,7 +222,7 @@ def extract_mask(exr_file):
     return mask_combined, mask_combined_rgb, id_mapping
 
 
-def extract_mask_from_file(path_exr):
+def extract_mask_from_file(path_exr: str) -> Tuple[np.ndarray, np.ndarray, Dict]:
     """From an EXR file on disk, extract the masks"""
     exr_file = OpenEXR.InputFile(str(path_exr))
     mask_combined, mask_combined_rgb, id_mapping = extract_mask(exr_file)
