@@ -18,7 +18,7 @@ setup(
     python_requires=">=3.8.0",
     install_requires=[
         "numpy>=1.18.0",
-        "exr-info @ git+https://github.com/Synthesis-AI-Dev/exr-info.git#egg=exr-info-0.1",
+        "exr-info @ git+ssh://git@github.com/Synthesis-AI-Dev/exr-info.git#egg=exr-info-0.1",
         "openexr @ git+https://github.com/jamesbowman/openexrpython.git#egg=openexr-1.3.2",
     ],
     description="Extracts cryptomattes from rendered EXR files",
