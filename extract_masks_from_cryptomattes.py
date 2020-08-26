@@ -72,6 +72,8 @@ def main():
     if not dir_input.is_dir():
         raise ValueError(f'Not a directory: {dir_input}')
     dir_output.mkdir(parents=True, exist_ok=True)
+    if Path(output_mask_ext).suffix != '.png':
+        raise ValueError(f'The output mask must be in .png format. Given format: {output_mask_ext}')
 
     exr_filenames = sorted(dir_input.glob('*' + input_exr_ext))
 
