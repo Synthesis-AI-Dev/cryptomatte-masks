@@ -11,7 +11,7 @@ import Imath
 import OpenEXR
 import numpy as np
 
-from exr_info import exr_info
+import exr_info
 
 MASK_THRESHOLD = 0.48 * 255
 MANIFEST_IDENTIFIER = '/manifest'
