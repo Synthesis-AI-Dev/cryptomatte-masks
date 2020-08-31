@@ -1,3 +1,4 @@
+import colorsys
 import enum
 import json
 import math
@@ -10,9 +11,10 @@ import Imath
 import OpenEXR
 import numpy as np
 
-from exr_info import exr_info
+import exr_info
 
 MASK_THRESHOLD = 0.48 * 255
+MANIFEST_IDENTIFIER = '/manifest'
 
 
 class ExrDtype(enum.Enum):
@@ -165,10 +167,15 @@ def get_mask_for_id(float_id: float, cr_combined: np.ndarray, level: int = 6) ->
     return mask
 
 
-def extract_mask(exr_file: OpenEXR.InputFile) -> Tuple[np.ndarray, np.ndarray, Dict]:
+def extract_mask(exr_file: OpenEXR.InputFile,
+                 extract_id_mapping_from_manifest: bool = True) -> Tuple[np.ndarray, np.ndarray, Dict]:
     """Get a mask of all the objects in an EXR image from the cryptomatte
     Args:
         exr_file (OpenEXR.InputFile): The opened EXR file object
+        extract_id_mapping_from_manifest (bool): In latest renders, the ID that each object in cryptomatte maps to
+                                                 in the output mask is present in the object's name in the manifest.
+                                                 Eg: cords_2, means that the object is of type "cords" and it maps to
+                                                     a value of 2 in the output mask
 
     Returns:
         numpy.ndarray: Mask of all objects in scene. Each object has a unique value. Dtype: np.float16, Shape: (H, W)
@@ -179,7 +186,7 @@ def extract_mask(exr_file: OpenEXR.InputFile) -> Tuple[np.ndarray, np.ndarray, D
     header = exr_file.header()
     manifest = None
     for key in header:
-        if '/manifest' in key:
+        if MANIFEST_IDENTIFIER in key:
             manifest = json.loads(header[key], object_pairs_hook=OrderedDict)
             break
     if manifest is None:
@@ -203,10 +210,23 @@ def extract_mask(exr_file: OpenEXR.InputFile) -> Tuple[np.ndarray, np.ndarray, D
     id_list = []
     id_mapping = OrderedDict()  # Mapping the name of each obj to obj id
     for float_id, obj_id, obj_name in zip(float_ids, obj_ids, sorted(manifest)):
+        # Ignore the vrayLightDome.
+        if obj_name == 'vrayLightDome':
+            continue
+
         mask = get_mask_for_id(float_id, cr_combined)
         mask_list.append(mask)
-        id_list.append(obj_id)
-        id_mapping[obj_name] = obj_id
+
+        if extract_id_mapping_from_manifest:
+            # The object type and ID is encoded in the object's name in manifest
+            obj_type, obj_id_manifest = obj_name.split('_')
+            id_mapping[obj_name] = int(obj_id_manifest)
+            id_list.append(int(obj_id_manifest))
+        else:
+            # The ID will be same as index of object in manifest. IDs extracted like should should be saved in a
+            # separate file so that the mapping from IDs to objects is available
+            id_mapping[obj_name] = obj_id
+            id_list.append(obj_id)
 
     # Combine all the masks into single mask
     height, width = get_imsize(exr_file)
@@ -215,9 +235,15 @@ def extract_mask(exr_file: OpenEXR.InputFile) -> Tuple[np.ndarray, np.ndarray, D
     for mask, obj_id in zip(mask_list, id_list):
         mask_combined[mask > MASK_THRESHOLD] = obj_id
 
-        # TODO: Generate random hue, keeping saturation and value constant. Then convert HSV to RGB.
-        rand_color = [random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)]
-        mask_combined_rgb[mask > MASK_THRESHOLD, :] = rand_color
+        hue = random.random()
+        sat, val = 0.7, 0.7
+        r, g, b = colorsys.hsv_to_rgb(hue, sat, val)
+        rgb = []
+        for col in [r, g, b]:
+            col_np = np.array(col, dtype=np.float32)
+            col_np = (np.clip(col_np * 255, 0, 255)).astype(np.uint8)
+            rgb.append(col_np)
+        mask_combined_rgb[mask > MASK_THRESHOLD, :] = rgb
 
     return mask_combined, mask_combined_rgb, id_mapping
 
