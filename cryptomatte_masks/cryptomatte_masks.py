@@ -238,7 +238,12 @@ def extract_mask(exr_file: OpenEXR.InputFile,
         hue = random.random()
         sat, val = 0.7, 0.7
         r, g, b = colorsys.hsv_to_rgb(hue, sat, val)
-        mask_combined_rgb[mask > MASK_THRESHOLD, :] = (int(r * 255), int(g * 255), int(b * 255))
+        rgb = []
+        for col in [r, g, b]:
+            col_np = np.array(col, dtype=np.float32)
+            col_np = (np.clip(col_np * 255, 0, 255)).astype(np.uint8)
+            rgb.append(col_np)
+        mask_combined_rgb[mask > MASK_THRESHOLD, :] = rgb
 
     return mask_combined, mask_combined_rgb, id_mapping
 
