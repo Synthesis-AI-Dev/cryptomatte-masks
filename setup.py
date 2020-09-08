@@ -15,7 +15,7 @@ with open("cryptomatte_masks/__init__.py") as f:
 setup(
     name="cryptomatte_masks",
     version=version,
-    python_requires=">=3.8.0",
+    python_requires=">=3.6.0",
     install_requires=[
         "numpy>=1.18.0",
         "exr-info @ git+https://github.com/Synthesis-AI-Dev/exr-info.git#egg=exr-info-0.1",
