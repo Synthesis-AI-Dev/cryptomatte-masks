@@ -22,23 +22,6 @@ class ExrDtype(enum.Enum):
     FLOAT16 = 1
 
 
-def get_imsize(exr_file: OpenEXR.InputFile) -> Tuple[int, int]:
-    """Get the height and width of image within and EXR file
-
-    Args:
-        exr_file (OpenEXR.InputFile): The opened EXR file object.
-
-    Returns:
-        int, int: Height, Width of image
-    """
-    header = exr_file.header()
-    dw = header['dataWindow']
-    height = int(dw.max.y - dw.min.y + 1)
-    width = int(dw.max.x - dw.min.x + 1)
-
-    return height, width
-
-
 def exr_channel_to_numpy(exr_file: OpenEXR.InputFile, channel_name: str, reshape: Optional[Tuple[int, int]],
                          dtype: ExrDtype = ExrDtype.FLOAT32) -> np.ndarray:
     """Extracts a channel in an EXR file into a numpy array
