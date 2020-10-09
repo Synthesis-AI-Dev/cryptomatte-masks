@@ -50,7 +50,7 @@ def process_file(path_exr: Path, mask_ext: str, mask_rgb_ext: str, id_map_ext: s
         output_dir (None or pathlib.Path): The dir to create output files in
         mask_ext (str): The extention to give to filenames of output masks
         mask_rgb_ext (str): The extention to give to filenames of RGB visualization of output masks
-        id_map_ext (str): The extention to gove to filenames of JSONs mapping object names to IDs in mask.
+        id_map_ext (str): The extention to give to filenames of JSONs mapping object names to IDs in mask.
     """
     if not path_exr.exists():
         raise ValueError(f'The file does not exist: {path_exr}')
