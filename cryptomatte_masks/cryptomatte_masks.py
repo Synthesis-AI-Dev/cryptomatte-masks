@@ -20,38 +20,6 @@ MANIFEST_IDENTIFIER = '/manifest'
 IGNORE_ID_IN_MANIFEST = ['vrayLightDome', 'vrayLightMesh']
 
 
-class ExrDtype(enum.Enum):
-    FLOAT32 = 0
-    FLOAT16 = 1
-
-
-def exr_channel_to_numpy(exr_file: OpenEXR.InputFile, channel_name: str, reshape: Optional[Tuple[int, int]],
-                         dtype: ExrDtype = ExrDtype.FLOAT32) -> np.ndarray:
-    """Extracts a channel in an EXR file into a numpy array
-
-    Args:
-        exr_file (OpenEXR.InputFile): The opened EXR file object
-        channel_name (str): The name of the channel to be converted to numpy
-        reshape (None or Tuple(height, width): If given, will reshape the 2D numpy array into (height, width)
-        dtype (ExrDtype): Whether the data in channel is of float32 or float16 type
-
-    Returns:
-        numpy.ndarray: The extracted channel in form of numpy array
-    """
-    if dtype == ExrDtype.FLOAT32:
-        point_type = Imath.PixelType(Imath.PixelType.FLOAT)
-        np_type = np.float32
-    else:
-        point_type = Imath.PixelType(Imath.PixelType.HALF)
-        np_type = np.float16
-
-    channel_arr = np.frombuffer(exr_file.channel(channel_name, point_type), dtype=np_type)
-    if reshape:
-        channel_arr = channel_arr.reshape(reshape)
-
-    return channel_arr
-
-
 def get_crypto_layer(exr_file: OpenEXR.InputFile, layer_mapping: exr_info.CryptoLayerMapping) -> np.ndarray:
     """Extract one of the cryptomatte layers as a 4-channel numpy array.
     Each cryptomatte layer has 4 channels for RGBA.
@@ -70,13 +38,14 @@ def get_crypto_layer(exr_file: OpenEXR.InputFile, layer_mapping: exr_info.Crypto
     Returns:
         numpy.ndarray: The cryptomatte layer. Shape: (H, W, 4)
     """
-    height, width = get_imsize(exr_file)
+    exr_f_info = exr_info.ExrInfo(exr_file)
+    height, width = exr_f_info.get_imsize()
     cr_00 = np.zeros((height, width, 4), dtype=np.float32)
 
-    cr_00[:, :, 0] = exr_channel_to_numpy(exr_file, channel_name=layer_mapping.R, reshape=(height, width))
-    cr_00[:, :, 1] = exr_channel_to_numpy(exr_file, channel_name=layer_mapping.G, reshape=(height, width))
-    cr_00[:, :, 2] = exr_channel_to_numpy(exr_file, channel_name=layer_mapping.B, reshape=(height, width))
-    cr_00[:, :, 3] = exr_channel_to_numpy(exr_file, channel_name=layer_mapping.A, reshape=(height, width))
+    cr_00[:, :, 0] = exr_f_info.exr_channel_to_numpy(channel_name=layer_mapping.R)
+    cr_00[:, :, 1] = exr_f_info.exr_channel_to_numpy(channel_name=layer_mapping.G)
+    cr_00[:, :, 2] = exr_f_info.exr_channel_to_numpy(channel_name=layer_mapping.B)
+    cr_00[:, :, 3] = exr_f_info.exr_channel_to_numpy(channel_name=layer_mapping.A)
 
     return cr_00
 
@@ -215,7 +184,7 @@ def extract_mask(exr_file: OpenEXR.InputFile,
             id_list.append(obj_id)
 
     # Combine all the masks into single mask
-    height, width = get_imsize(exr_file)
+    height, width = exr_info.ExrInfo(exr_file).get_imsize()
     mask_combined = np.zeros((height, width), dtype=np.uint16)
     mask_combined_rgb = np.zeros((height, width, 3), dtype=np.uint8)
     for mask, obj_id in zip(mask_list, id_list):
