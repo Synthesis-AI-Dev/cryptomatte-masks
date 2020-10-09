@@ -14,7 +14,10 @@ import numpy as np
 import exr_info
 
 MASK_THRESHOLD = 0.48 * 255
+# Inside the exr header, the "manifest" contains the list of all objects in the cryptomatte and their unique hex id
 MANIFEST_IDENTIFIER = '/manifest'
+# In the manifest, some entried are added by vray, which should be ignored.
+IGNORE_ID_IN_MANIFEST = ['vrayLightDome', 'vrayLightMesh']
 
 
 class ExrDtype(enum.Enum):
@@ -194,7 +197,7 @@ def extract_mask(exr_file: OpenEXR.InputFile,
     id_mapping = OrderedDict()  # Mapping the name of each obj to obj id
     for float_id, obj_id, obj_name in zip(float_ids, obj_ids, sorted(manifest)):
         # Ignore the vrayLightDome.
-        if obj_name == 'vrayLightDome':
+        if obj_name in IGNORE_ID_IN_MANIFEST:
             continue
 
         mask = get_mask_for_id(float_id, cr_combined)
