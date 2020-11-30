@@ -174,9 +174,17 @@ def extract_mask(exr_file: OpenEXR.InputFile,
 
         if extract_id_mapping_from_manifest:
             # The object type and ID is encoded in the object's name in manifest
-            obj_type, obj_id_manifest = obj_name.split('_')
-            id_mapping[obj_name] = int(obj_id_manifest)
-            id_list.append(int(obj_id_manifest))
+            try:
+                obj_name_split = obj_name.split('_')
+                obj_id_manifest = obj_name_split[-1]
+                obj_type = '_'.join(obj_name_split[:-1])
+                if not obj_id_manifest.isdigit():
+                    raise ValueError(f'Could not get an ID from this entry in manifest. '
+                                     f'Expect format "classname_ID". Got: {obj_name}')
+                id_mapping[obj_type] = int(obj_id_manifest)
+                id_list.append(int(obj_id_manifest))
+            except ValueError as e:
+                print(f'Warning, got a class in manifest without an ID: {obj_name}. Ignoring it and continuing')
         else:
             # The ID will be same as index of object in manifest. IDs extracted like should should be saved in a
             # separate file so that the mapping from IDs to objects is available
