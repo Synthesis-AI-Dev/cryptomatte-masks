@@ -17,7 +17,7 @@ MASK_THRESHOLD = 0.48 * 255
 # Inside the exr header, the "manifest" contains the list of all objects in the cryptomatte and their unique hex id
 MANIFEST_IDENTIFIER = '/manifest'
 # In the manifest, some entried are added by vray, which should be ignored.
-IGNORE_ID_IN_MANIFEST = ['vrayLightDome', 'vrayLightMesh']
+IGNORE_ID_IN_MANIFEST = ['vrayLightDome', 'vrayLightMesh', 'default']
 
 
 def get_crypto_layer(exr_file: OpenEXR.InputFile, layer_mapping: exr_info.CryptoLayerMapping) -> np.ndarray:
@@ -173,9 +173,14 @@ def extract_mask(exr_file: OpenEXR.InputFile,
         mask_list.append(mask)
 
         if extract_id_mapping_from_manifest:
-            # The object type and ID is encoded in the object's name in manifest
-            obj_type, obj_id_manifest = obj_name.split('_')
-            id_mapping[obj_name] = int(obj_id_manifest)
+            # The object type and ID is encoded in the object's name in manifest in EXR
+            obj_name_split = obj_name.split('_')
+            obj_id_manifest = obj_name_split[-1]
+            obj_type = '_'.join(obj_name_split[:-1])
+            if not obj_id_manifest.isdigit():
+                raise ValueError(f'Could not get an ID from this entry in manifest. '
+                                 f'Expect format "<classname>_<ID>". Got: {obj_name}')
+            id_mapping[obj_type] = int(obj_id_manifest)
             id_list.append(int(obj_id_manifest))
         else:
             # The ID will be same as index of object in manifest. IDs extracted like should should be saved in a
