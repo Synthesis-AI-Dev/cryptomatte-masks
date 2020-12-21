@@ -1,17 +1,14 @@
 import colorsys
-import enum
 import json
 import math
 import random
 import struct
 from collections import OrderedDict
-from typing import Optional, Tuple, Dict
+from typing import Tuple, Dict
 
-import Imath
 import OpenEXR
-import numpy as np
-
 import exr_info
+import numpy as np
 
 MASK_THRESHOLD = 0.48 * 255
 # Inside the exr header, the "manifest" contains the list of all objects in the cryptomatte and their unique hex id
@@ -189,9 +186,6 @@ def extract_mask(exr_file: OpenEXR.InputFile,
             id_list.append(obj_id)
 
     # Combine all the masks into single mask
-    height, width = exr_info.ExrInfo(exr_file).get_imsize()
-    mask_combined = np.zeros((height, width), dtype=np.uint16)
-    mask_combined_rgb = np.zeros((height, width, 3), dtype=np.uint8)
     masks = np.stack(mask_list)
     background_mask = 255 - masks.sum(axis=0)
     masks = np.concatenate((np.expand_dims(background_mask, 0), masks), axis=0)
@@ -210,7 +204,7 @@ def extract_mask(exr_file: OpenEXR.InputFile,
         return rgb
 
     colors = [random_color() for _ in range(len(id_list))]
-    mask_combined_rgb = np.take([[0,0,0]] + colors, mask_combined_num, 0)
+    mask_combined_rgb = np.take([[0.0, 0.0, 0.0]] + colors, mask_combined_num, 0)
 
     return mask_combined, mask_combined_rgb, id_mapping
 
