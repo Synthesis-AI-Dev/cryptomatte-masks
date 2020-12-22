@@ -166,17 +166,16 @@ def extract_mask(exr_file: OpenEXR.InputFile,
         if obj_name in IGNORE_ID_IN_MANIFEST:
             continue
 
-        mask = get_mask_for_id(float_id, cr_combined)
-        mask_list.append(mask)
-
         if extract_id_mapping_from_manifest:
             # The object type and ID is encoded in the object's name in manifest in EXR
+            # WARNING: Tmp bypass for rooms api. If any segments do not follow this format, ignore them
             obj_name_split = obj_name.split('_')
             obj_id_manifest = obj_name_split[-1]
             obj_type = '_'.join(obj_name_split[:-1])
             if not obj_id_manifest.isdigit():
-                raise ValueError(f'Could not get an ID from this entry in manifest. '
-                                 f'Expect format "<classname>_<ID>". Got: {obj_name}')
+                # raise ValueError(f'Could not get an ID from this entry in manifest. '
+                #                  f'Expect format "<classname>_<ID>". Got: {obj_name}')
+                continue
             id_mapping[obj_type] = int(obj_id_manifest)
             id_list.append(int(obj_id_manifest))
         else:
@@ -184,6 +183,9 @@ def extract_mask(exr_file: OpenEXR.InputFile,
             # separate file so that the mapping from IDs to objects is available
             id_mapping[obj_name] = obj_id
             id_list.append(obj_id)
+
+        mask = get_mask_for_id(float_id, cr_combined)
+        mask_list.append(mask)
 
     # Combine all the masks into single mask
     masks = np.stack(mask_list)
