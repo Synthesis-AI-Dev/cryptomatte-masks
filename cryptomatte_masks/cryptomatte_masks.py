@@ -119,6 +119,29 @@ def get_mask_for_id(float_id: float, cr_combined: np.ndarray, level: int = 6) ->
     return mask
 
 
+def get_float_mask_for_id(float_id: float, cr_combined: np.ndarray, level: int = 6) -> np.ndarray:
+    """Extract mask corresponding to a float id from the cryptomatte layers, return in floating point
+    Args:
+        float_id (float32): The ID of the object
+        cr_combined (numpy.ndarray): The cryptomatte layers combined into a single array along the channels axis.
+                                     By default, there are 3 layers, corresponding to a level of 6.
+        level (int): The Level of the Cryptomatte. Default is 6 for most rendering engines. The level dictates the
+                     max num of objects that the crytomatte can represent. The number of cryptomatte layers in EXR
+                     will change depending on level.
+
+    Returns:
+        numpy.ndarray: Mask from cryptomatte for a given id. Dtype: np.uint8, Range: [0, 255]
+    """
+    coverage_list = []
+    for rank in range(level):
+        coverage_rank = get_coverage_for_rank(float_id, cr_combined, rank)
+        coverage_list.append(coverage_rank)
+    coverage = sum(coverage_list)
+    coverage = np.clip(coverage, 0.0, 1.0)
+
+    return coverage
+
+
 def extract_mask(exr_file: OpenEXR.InputFile,
                  extract_id_mapping_from_manifest: bool = True) -> Tuple[np.ndarray, np.ndarray, Dict]:
     """Get a mask of all the objects in an EXR image from the cryptomatte
@@ -166,17 +189,16 @@ def extract_mask(exr_file: OpenEXR.InputFile,
         if obj_name in IGNORE_ID_IN_MANIFEST:
             continue
 
-        mask = get_mask_for_id(float_id, cr_combined)
-        mask_list.append(mask)
-
         if extract_id_mapping_from_manifest:
             # The object type and ID is encoded in the object's name in manifest in EXR
+            # WARNING: Tmp bypass for rooms api. If any segments do not follow this format, ignore them
             obj_name_split = obj_name.split('_')
             obj_id_manifest = obj_name_split[-1]
             obj_type = '_'.join(obj_name_split[:-1])
             if not obj_id_manifest.isdigit():
-                raise ValueError(f'Could not get an ID from this entry in manifest. '
-                                 f'Expect format "<classname>_<ID>". Got: {obj_name}')
+                # raise ValueError(f'Could not get an ID from this entry in manifest. '
+                #                  f'Expect format "<classname>_<ID>". Got: {obj_name}')
+                continue
             id_mapping[obj_type] = int(obj_id_manifest)
             id_list.append(int(obj_id_manifest))
         else:
@@ -184,6 +206,9 @@ def extract_mask(exr_file: OpenEXR.InputFile,
             # separate file so that the mapping from IDs to objects is available
             id_mapping[obj_name] = obj_id
             id_list.append(obj_id)
+
+        mask = get_mask_for_id(float_id, cr_combined)
+        mask_list.append(mask)
 
     # Combine all the masks into single mask
     masks = np.stack(mask_list)
@@ -207,6 +232,62 @@ def extract_mask(exr_file: OpenEXR.InputFile,
     mask_combined_rgb = np.take([[0.0, 0.0, 0.0]] + colors, mask_combined_num, 0)
 
     return mask_combined, mask_combined_rgb, id_mapping
+
+
+def get_alpha_mask(exr_file: OpenEXR.InputFile) -> np.ndarray:
+    """With faces in 3D rooms, the alpha map contains all the indoor objects, such as walls. We get the alpha
+    map containing only people and their clothes from cryptomatte"""
+    # Get the manifest (mapping of object names to hash ids)
+    header = exr_file.header()
+    manifest = None
+    for key in header:
+        if MANIFEST_IDENTIFIER in key:
+            manifest = json.loads(header[key], object_pairs_hook=OrderedDict)
+            break
+    if manifest is None:
+        raise RuntimeError('The EXR file\'s header does not contain the manifest for cryptomattes')
+
+    # Convert hash ids to float ids
+    float_ids = []
+    obj_ids = []
+    for ii, obj_name in enumerate(sorted(manifest)):
+        hex_id = manifest[obj_name]
+        bytes_val = bytes.fromhex(hex_id)
+        float_val = struct.unpack('>f', bytes_val)[0]
+        float_ids.append(float_val)
+        obj_ids.append(ii)
+
+    # Extract the crypto layers from EXR file
+    cr_combined = get_crypto_layers_from_exr(exr_file)
+
+    # Extract mask of each object in manifest
+    mask_list = []
+    id_list = []
+    id_mapping = OrderedDict()  # Mapping the name of each obj to obj id
+    for float_id, obj_id, obj_name in zip(float_ids, obj_ids, sorted(manifest)):
+        # Ignore the vrayLightDome.
+        if obj_name in IGNORE_ID_IN_MANIFEST:
+            continue
+
+        # The object type and ID is encoded in the object's name in manifest in EXR
+        # WARNING: Tmp bypass for rooms api. If any segments do not follow this format, ignore them
+        obj_name_split = obj_name.split('_')
+        obj_id_manifest = obj_name_split[-1]
+        obj_type = '_'.join(obj_name_split[:-1])
+        if not obj_id_manifest.isdigit():
+            # raise ValueError(f'Could not get an ID from this entry in manifest. '
+            #                  f'Expect format "<classname>_<ID>". Got: {obj_name}')
+            continue
+        id_mapping[obj_type] = int(obj_id_manifest)
+        id_list.append(int(obj_id_manifest))
+
+        mask = get_float_mask_for_id(float_id, cr_combined)
+        mask_list.append(mask)
+
+    # Combine all the masks into single mask
+    alpha_mask = np.stack(mask_list).sum(0)
+    alpha_mask = np.clip(alpha_mask, 0.0, 1.0)
+    return alpha_mask
 
 
 def extract_mask_from_file(path_exr: str) -> Tuple[np.ndarray, np.ndarray, Dict]:
